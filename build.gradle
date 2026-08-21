@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.78'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+version = '1.0.0'
+group = 'com.example.statshud'
+
+repositories {
+    mavenCentral()
+}
+
+neoForge {
+    version = '21.1.65'
+
+    mods {
+        statshud {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
