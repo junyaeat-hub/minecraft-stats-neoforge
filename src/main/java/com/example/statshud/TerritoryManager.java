@@ -35,14 +35,20 @@ public class TerritoryManager {
         }
     }
 
-    // Хранилище: "X,Z" -> ClaimData
     private static Map<String, ClaimData> CLAIMS = new HashMap<>();
-
-    // Отслеживание текущей зоны (UUID -> Имя зоны)
     private static final Map<UUID, String> CURRENT_ZONE = new HashMap<>();
-
-    // Список открытых зон (UUID -> Set имён)
     private static final Map<UUID, Set<String>> VISITED_ZONES = new HashMap<>();
+
+    private static final List<SoundEvent> DISCOVERY_SOUNDS = List.of(
+        SoundEvents.RAID_HORN.value(),
+        SoundEvents.BELL_BLOCK,
+        SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,
+        SoundEvents.GOAT_HORN_SOUND_VARIANTS.get(0).value(),
+        SoundEvents.GOAT_HORN_SOUND_VARIANTS.get(2).value(),
+        SoundEvents.GOAT_HORN_SOUND_VARIANTS.get(4).value()
+    );
+
+    private static final Random RANDOM = new Random();
 
     public static void load() {
         if (!CONFIG_FILE.exists()) return;
@@ -82,7 +88,6 @@ public class TerritoryManager {
                 String key = getChunkKey(cx, cz);
 
                 ClaimData existing = CLAIMS.get(key);
-                // Можно занять свободный чанк или переименовать свой
                 if (existing == null || existing.ownerUuid.equals(uuid)) {
                     CLAIMS.put(key, new ClaimData(name, uuid));
                     claimedCount++;
@@ -132,7 +137,6 @@ public class TerritoryManager {
         String currentName = getTerritoryName(player.chunkPosition());
         String lastZone = CURRENT_ZONE.getOrDefault(player.getUUID(), "");
 
-        // Срабатывает только при смене названия территории
         if (!currentName.equals(lastZone)) {
             CURRENT_ZONE.put(player.getUUID(), currentName);
 
@@ -154,7 +158,8 @@ public class TerritoryManager {
         )));
 
         if (playSound) {
-            Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.RAID_HORN.value());
+            SoundEvent randomSound = DISCOVERY_SOUNDS.get(RANDOM.nextInt(DISCOVERY_SOUNDS.size()));
+            Holder<SoundEvent> soundHolder = Holder.direct(randomSound);
             player.connection.send(new ClientboundSoundPacket(
                 soundHolder,
                 SoundSource.RECORDS,
