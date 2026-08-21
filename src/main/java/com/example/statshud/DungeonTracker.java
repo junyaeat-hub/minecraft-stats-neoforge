@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public class DungeonTracker {
-    // Отслеживание текущего данжа игрока (UUID -> Название данжа)
     private static final Map<UUID, String> PLAYER_DUNGEON = new HashMap<>();
 
     public static void checkPlayerDungeon(ServerPlayer player) {
@@ -29,8 +28,6 @@ public class DungeonTracker {
 
         String dungeonName = "";
 
-        // Проверяем структуры через реестр Minecraft/Forge
-        // YUNG's Strongholds / Better Fortresses / Cataclysm используют стандартные теги структур или локации
         if (isInsideStructure(level, pos, "stronghold")) {
             dungeonName = "§4Древняя Крепость (Stronghold)";
         } else if (isInsideStructure(level, pos, "fortress")) {
@@ -45,13 +42,10 @@ public class DungeonTracker {
 
         String lastDungeon = PLAYER_DUNGEON.getOrDefault(player.getUUID(), "");
 
-        // Если игрок вошел в новое подземелье
         if (!dungeonName.isEmpty() && !dungeonName.equals(lastDungeon)) {
             PLAYER_DUNGEON.put(player.getUUID(), dungeonName);
             sendDungeonAlert(player, dungeonName);
-        } 
-        // Если игрок вышел из подземелья на поверхность
-        else if (dungeonName.isEmpty() && !lastDungeon.isEmpty()) {
+        } else if (dungeonName.isEmpty() && !lastDungeon.isEmpty()) {
             PLAYER_DUNGEON.put(player.getUUID(), "");
             player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 20, 10));
             player.connection.send(new ClientboundSetTitleTextPacket(Component.literal("§2Поверхность")));
@@ -62,7 +56,6 @@ public class DungeonTracker {
     private static boolean isInsideStructure(ServerLevel level, BlockPos pos, String structureKey) {
         try {
             var structureManager = level.structureManager();
-            // Проверяем, находится ли позиция внутри структуры по ключевому слову в ID
             var registry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
             for (var entry : registry.entrySet()) {
                 if (entry.getKey().location().getPath().contains(structureKey)) {
@@ -81,13 +74,13 @@ public class DungeonTracker {
         player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(dungeonName)));
         player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal("§4⚠ Зона повышенной опасности ⚠")));
 
-        // Тревожный мистический звук / гул катакомб
-        Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.WARDEN_HEARTBEAT.value());
+        // Исправлено: передаем SoundEvents.WARDEN_HEARTBEAT напрямую в Holder.direct
+        Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.WARDEN_HEARTBEAT);
         player.connection.send(new ClientboundSoundPacket(
             soundHolder,
             SoundSource.HOSTILE,
             player.getX(), player.getY(), player.getZ(),
-            1.0f, 0.5f, // Низкий басовый ууууух
+            1.0f, 0.5f,
             player.level().getRandom().nextLong()
         ));
     }
