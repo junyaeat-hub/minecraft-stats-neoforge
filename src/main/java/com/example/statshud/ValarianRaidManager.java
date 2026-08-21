@@ -1,9 +1,115 @@
-public static boolean spawnRaid(ServerPlayer targetPlayer, String territoryName, String factionName) {
+package com.example.statshud;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.levelgen.Heightmap;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+public class ValarianRaidManager {
+    private static final Random RANDOM = new Random();
+
+    private static long lastRaidDay = 0;
+    private static int nextRaidInterval = 10; 
+    private static boolean raidTriggeredToday = false;
+
+    public static void tick(MinecraftServer server) {
+        ServerLevel overworld = server.overworld();
+        if (overworld == null) return;
+
+        long currentDay = overworld.getDayTime() / 24000L;
+        long timeOfDay = overworld.getDayTime() % 24000L;
+
+        if (timeOfDay < 1000L) {
+            raidTriggeredToday = false;
+        }
+
+        if (!raidTriggeredToday && (currentDay - lastRaidDay >= nextRaidInterval) && timeOfDay >= 13000L) {
+            raidTriggeredToday = true;
+            lastRaidDay = currentDay;
+            nextRaidInterval = 10 + RANDOM.nextInt(6);
+
+            triggerRaidEvent(server);
+        }
+    }
+
+    private static void triggerRaidEvent(MinecraftServer server) {
+        List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
+        if (onlinePlayers.isEmpty()) return;
+
+        List<ServerPlayer> validTargets = new ArrayList<>();
+        for (ServerPlayer player : onlinePlayers) {
+            String rawTerritory = TerritoryManager.getRawTerritoryName(player.chunkPosition());
+            boolean isInClaim = !rawTerritory.isEmpty();
+
+            if (isInClaim && !isCitizenOfFaction(player, "valarian")) {
+                validTargets.add(player);
+            }
+        }
+
+        if (validTargets.isEmpty()) return;
+
+        ServerPlayer target = validTargets.get(RANDOM.nextInt(validTargets.size()));
+        String claimName = TerritoryManager.getRawTerritoryName(target.chunkPosition());
+        spawnRaid(target, claimName, "Valarian");
+    }
+
+    public static boolean forceRaid(ServerPlayer player) {
+        String claimName = TerritoryManager.getRawTerritoryName(player.chunkPosition());
+        if (claimName.isEmpty()) {
+            claimName = "Тестовая Зона";
+        }
+        return spawnRaid(player, claimName, "Valarian");
+    }
+
+    public static boolean isCitizenOfFaction(ServerPlayer player, String factionName) {
+        String lowerFaction = factionName.toLowerCase();
+
+        for (String tag : player.getTags()) {
+            if (tag.toLowerCase().contains(lowerFaction)) {
+                return true;
+            }
+        }
+
+        CompoundTag persistentData = player.getPersistentData();
+        if (persistentData.contains("PlayerPersisted")) {
+            CompoundTag persisted = persistentData.getCompound("PlayerPersisted");
+            if (persisted.contains("Faction") && persisted.getString("Faction").toLowerCase().contains(lowerFaction)) {
+                return true;
+            }
+            if (persisted.contains("Citizenship") && persisted.getString("Citizenship").toLowerCase().contains(lowerFaction)) {
+                return true;
+            }
+        }
+
+        if (player.getTeam() != null && player.getTeam().getName().toLowerCase().contains(lowerFaction)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static boolean spawnRaid(ServerPlayer targetPlayer, String territoryName, String factionName) {
         ServerLevel level = (ServerLevel) targetPlayer.level();
         MinecraftServer server = level.getServer();
         BlockPos playerPos = targetPlayer.blockPosition();
 
-        // Фильтруем строго живых мобов (отсекаем стрелы, ядра, мосты и повозки)
         List<EntityType<?>> valarianEntities = BuiltInRegistries.ENTITY_TYPE.entrySet().stream()
             .filter(entry -> {
                 String ns = entry.getKey().location().getNamespace().toLowerCase();
@@ -28,7 +134,6 @@ public static boolean spawnRaid(ServerPlayer targetPlayer, String territoryName,
         String rawTerritory = TerritoryManager.getRawTerritoryName(targetPlayer.chunkPosition());
         Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.RAID_HORN.value());
 
-        // Оповещаем и цель, и всех игроков внутри этого же клейма
         for (ServerPlayer onlinePlayer : server.getPlayerList().getPlayers()) {
             String playerCurrentClaim = TerritoryManager.getRawTerritoryName(onlinePlayer.chunkPosition());
             boolean isInsideUnderAttackClaim = !rawTerritory.isEmpty() && playerCurrentClaim.equals(rawTerritory);
@@ -77,3 +182,4 @@ public static boolean spawnRaid(ServerPlayer targetPlayer, String territoryName,
         targetPlayer.sendSystemMessage(Component.literal("§a[Набег] Прибыло бойцов: §e" + count));
         return true;
     }
+}
