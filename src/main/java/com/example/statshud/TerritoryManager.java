@@ -3,12 +3,15 @@ package com.example.statshud;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
@@ -37,6 +40,9 @@ public class TerritoryManager {
 
     private static Map<String, ClaimData> CLAIMS = new HashMap<>();
     private static final Map<UUID, String> CURRENT_ZONE = new HashMap<>();
+
+    // Кулдаун тревоги осады, чтобы звук не спамил при серии взрывов (UUID владельца -> Время в мс)
+    private static final Map<UUID, Long> SIEGE_COOLDOWNS = new HashMap<>();
 
     private static final List<SoundEvent> DISCOVERY_SOUNDS = List.of(
         SoundEvents.RAID_HORN.value(),
@@ -136,7 +142,6 @@ public class TerritoryManager {
         String currentName = getTerritoryName(player.chunkPosition());
         String lastZone = CURRENT_ZONE.getOrDefault(player.getUUID(), "");
 
-        // Срабатывает каждый раз при смене территории
         if (!currentName.equals(lastZone)) {
             CURRENT_ZONE.put(player.getUUID(), currentName);
             sendTerritoryTitle(player, currentName);
@@ -148,7 +153,6 @@ public class TerritoryManager {
         player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(name)));
         player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal("§8[Вход на территорию]")));
 
-        // Звук проигрывается всегда при переходе в любую локацию кроме "Диких Земель"
         if (!name.equals("§7Дикие Земли")) {
             SoundEvent randomSound = DISCOVERY_SOUNDS.get(RANDOM.nextInt(DISCOVERY_SOUNDS.size()));
             Holder<SoundEvent> soundHolder = Holder.direct(randomSound);
@@ -159,6 +163,49 @@ public class TerritoryManager {
                 1.0f, 1.0f,
                 player.level().getRandom().nextLong()
             ));
+        }
+    }
+
+    // Модуль обнаружения осад и артиллерийского обстрела
+    public static void handleExplosionOrSiege(MinecraftServer server, BlockPos pos) {
+        ChunkPos center = new ChunkPos(pos);
+        long now = System.currentTimeMillis();
+
+        // Проверяем эпицентр и соседние чанки (радиус 1 чанк вокруг взрыва)
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                String key = getChunkKey(center.x + dx, center.z + dz);
+                ClaimData data = CLAIMS.get(key);
+
+                if (data != null) {
+                    try {
+                        UUID ownerUuid = UUID.fromString(data.ownerUuid);
+                        long lastAlert = SIEGE_COOLDOWNS.getOrDefault(ownerUuid, 0L);
+
+                        // Кулдаун 8 секунд между тревогами одному владельцу
+                        if (now - lastAlert > 8000) {
+                            SIEGE_COOLDOWNS.put(ownerUuid, now);
+                            ServerPlayer owner = server.getPlayerList().getPlayer(ownerUuid);
+
+                            if (owner != null) {
+                                // Красное тревожное сообщение в Actionbar
+                                owner.connection.send(new ClientboundSetActionBarTextPacket(
+                                    Component.literal("§c⚔ ТРЕВОГА! Владения [§6" + data.name + "§c] атакованы артиллерией!")
+                                ));
+
+                                // Звук набатного колокола
+                                owner.connection.send(new ClientboundSoundPacket(
+                                    Holder.direct(SoundEvents.BELL_BLOCK),
+                                    SoundSource.PLAYERS,
+                                    owner.getX(), owner.getY(), owner.getZ(),
+                                    1.0f, 1.4f,
+                                    owner.level().getRandom().nextLong()
+                                ));
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
         }
     }
 }
