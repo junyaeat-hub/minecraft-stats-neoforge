@@ -46,7 +46,6 @@ public class StatsHudMod {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        // Команда: /claim <название> (1 чанк) ИЛИ /claim <радиус> <название> (радиус в чанках)
         event.getDispatcher().register(
             Commands.literal("claim")
                 .then(Commands.argument("radius", IntegerArgumentType.integer(0, 5))
@@ -76,7 +75,6 @@ public class StatsHudMod {
                 )
         );
 
-        // Команда: /unclaim ИЛИ /unclaim <радиус>
         event.getDispatcher().register(
             Commands.literal("unclaim")
                 .then(Commands.argument("radius", IntegerArgumentType.integer(0, 5))
@@ -141,6 +139,7 @@ public class StatsHudMod {
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             TerritoryManager.checkPlayerMovement(player);
+            DungeonTracker.checkPlayerDungeon(player);
 
             ServerStatsCounter stats = server.getPlayerList().getPlayerStats(player);
             int mobKills = stats.getValue(Stats.CUSTOM.get(Stats.MOB_KILLS));
@@ -165,6 +164,7 @@ public class StatsHudMod {
         player.connection.send(ClientboundSetPlayerTeamPacket.createAddOrModifyPacket(team, true));
         player.connection.send(ClientboundSetPlayerTeamPacket.createPlayerPacket(team, entry, ClientboundSetPlayerTeamPacket.Action.ADD));
 
-        player.connection.send(new ClientboundSetScorePacket(entry, OBJECTIVE_NAME, score, Optional.empty(), Optional.empty()));
+        ScoreHolder holder = () -> entry;
+        player.connection.send(new ClientboundSetScorePacket(holder.getScoreboardName(), OBJECTIVE_NAME, score, Optional.empty(), Optional.empty()));
     }
 }
