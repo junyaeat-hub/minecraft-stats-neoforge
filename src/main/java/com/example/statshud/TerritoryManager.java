@@ -125,13 +125,6 @@ public class TerritoryManager {
         return unclaimedCount;
     }
 
-    public static boolean isProtected(ServerPlayer player, ChunkPos pos) {
-        ClaimData data = CLAIMS.get(getChunkKey(pos.x, pos.z));
-        if (data == null) return false;
-        return !data.ownerUuid.equals(player.getUUID().toString()) && !player.hasPermissions(2);
-    }
-
-    // Возвращает отображаемое имя локации для сайдбара: клейм > данж > дикие земли
     public static String getDisplayLocation(ServerPlayer player) {
         ClaimData data = CLAIMS.get(getChunkKey(player.chunkPosition().x, player.chunkPosition().z));
         if (data != null) {
@@ -156,7 +149,6 @@ public class TerritoryManager {
         String currentClaim = data != null ? data.name : "";
         String lastZone = CURRENT_ZONE.getOrDefault(player.getUUID(), "");
 
-        // Реагируем только на вход в именованные феодальные владения игроков
         if (!currentClaim.isEmpty() && !currentClaim.equals(lastZone)) {
             CURRENT_ZONE.put(player.getUUID(), currentClaim);
             sendTerritoryTitle(player, "§6" + currentClaim);
