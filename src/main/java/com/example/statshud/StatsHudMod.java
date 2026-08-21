@@ -33,14 +33,17 @@ import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 @Mod(StatsHudMod.MODID)
 @EventBusSubscriber(modid = StatsHudMod.MODID)
 public class StatsHudMod {
     public static final String MODID = "statshud";
-    private static final String OBJECTIVE_NAME = "p_stats";
     private static int tickCounter = 0;
+    private static final Set<UUID> INITIALIZED_PLAYERS = new HashSet<>();
 
     public StatsHudMod() {}
 
@@ -77,7 +80,6 @@ public class StatsHudMod {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        // Команда для админов/OP: /raid test
         event.getDispatcher().register(
             Commands.literal("raid")
                 .requires(source -> source.hasPermission(2))
@@ -143,22 +145,36 @@ public class StatsHudMod {
         );
     }
 
+    private static String getPlayerObjectiveName(ServerPlayer player) {
+        return "sb_" + player.getStringUUID().replace("-", "").substring(0, 8);
+    }
+
+    private static void setupPlayerScoreboard(ServerPlayer player) {
+        String objName = getPlayerObjectiveName(player);
+        Objective dummyObj = new Objective(
+            new Scoreboard(),
+            objName,
+            ObjectiveCriteria.DUMMY,
+            Component.literal("§6§lСЕРВЕР §8| §fСтатистика"),
+            ObjectiveCriteria.RenderType.INTEGER,
+            true,
+            null
+        );
+
+        player.connection.send(new ClientboundSetObjectivePacket(dummyObj, ClientboundSetObjectivePacket.METHOD_ADD));
+        player.connection.send(new ClientboundSetDisplayObjectivePacket(DisplaySlot.SIDEBAR, dummyObj));
+    }
+
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            Objective dummyObj = new Objective(
-                new Scoreboard(),
-                OBJECTIVE_NAME,
-                ObjectiveCriteria.DUMMY,
-                Component.literal("§6§lСЕРВЕР §8| §fИнфо"),
-                ObjectiveCriteria.RenderType.INTEGER,
-                true,
-                null
-            );
-
-            player.connection.send(new ClientboundSetObjectivePacket(dummyObj, ClientboundSetObjectivePacket.METHOD_ADD));
-            player.connection.send(new ClientboundSetDisplayObjectivePacket(DisplaySlot.SIDEBAR, dummyObj));
+            INITIALIZED_PLAYERS.remove(player.getUUID());
         }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+        INITIALIZED_PLAYERS.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
@@ -174,6 +190,11 @@ public class StatsHudMod {
         long totalDays = server.overworld().getDayTime() / 24000L;
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!INITIALIZED_PLAYERS.contains(player.getUUID())) {
+                setupPlayerScoreboard(player);
+                INITIALIZED_PLAYERS.add(player.getUUID());
+            }
+
             TerritoryManager.checkPlayerMovement(player);
             DungeonTracker.checkPlayerDungeon(player);
 
@@ -182,19 +203,19 @@ public class StatsHudMod {
             int ping = player.connection.latency();
             String location = TerritoryManager.getDisplayLocation(player);
 
-            // Индивидуальные команды под каждого игрока (по UUID)
-            String pKey = player.getStringUUID().substring(0, 8);
+            String pKey = player.getStringUUID().replace("-", "").substring(0, 8);
+            String objName = getPlayerObjectiveName(player);
 
-            sendPersonalLine(player, 6, "§7Локация: " + location, "loc_" + pKey);
-            sendPersonalLine(player, 5, "§7Игрок: §f" + player.getName().getString(), "name_" + pKey);
-            sendPersonalLine(player, 4, "§7В сети: §a" + onlineCount, "onl_" + pKey);
-            sendPersonalLine(player, 3, "§7Пинг: §e" + ping + " ms", "png_" + pKey);
-            sendPersonalLine(player, 2, "§7Убийств: §c" + mobKills, "kll_" + pKey);
-            sendPersonalLine(player, 1, "§7Игровой день: §b" + totalDays, "day_" + pKey);
+            sendPersonalLine(player, objName, 6, "§7Локация: " + location, "loc_" + pKey);
+            sendPersonalLine(player, objName, 5, "§7Игрок: §f" + player.getName().getString(), "nam_" + pKey);
+            sendPersonalLine(player, objName, 4, "§7В сети: §a" + onlineCount, "onl_" + pKey);
+            sendPersonalLine(player, objName, 3, "§7Пинг: §e" + ping + " ms", "png_" + pKey);
+            sendPersonalLine(player, objName, 2, "§7Убийств: §c" + mobKills, "kll_" + pKey);
+            sendPersonalLine(player, objName, 1, "§7Игровой день: §b" + totalDays, "day_" + pKey);
         }
     }
 
-    private static void sendPersonalLine(ServerPlayer player, int score, String text, String teamName) {
+    private static void sendPersonalLine(ServerPlayer player, String objectiveName, int score, String text, String teamName) {
         String entry = ChatFormatting.values()[score].toString() + ChatFormatting.RESET;
 
         PlayerTeam team = new PlayerTeam(new Scoreboard(), teamName);
@@ -204,6 +225,6 @@ public class StatsHudMod {
         player.connection.send(ClientboundSetPlayerTeamPacket.createPlayerPacket(team, entry, ClientboundSetPlayerTeamPacket.Action.ADD));
 
         ScoreHolder holder = () -> entry;
-        player.connection.send(new ClientboundSetScorePacket(holder.getScoreboardName(), OBJECTIVE_NAME, score, Optional.empty(), Optional.empty()));
+        player.connection.send(new ClientboundSetScorePacket(holder.getScoreboardName(), objectiveName, score, Optional.empty(), Optional.empty()));
     }
 }
