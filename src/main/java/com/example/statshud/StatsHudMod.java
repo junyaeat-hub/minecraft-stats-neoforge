@@ -73,7 +73,8 @@ public class StatsHudMod {
         }
         team.setPlayerPrefix(Component.literal(text));
         
-        // Исправленная строка для версии 1.21.1:
-        scoreboard.getOrCreatePlayerScore(ScoreHolder.forName(entry), objective).set(score);
+        // Гарантированно рабочий ScoreHolder для 1.21.1:
+        ScoreHolder holder = ScoreHolder.fromName(entry);
+        scoreboard.getOrCreatePlayerScore(holder, objective).set(score);
     }
 }
