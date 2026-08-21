@@ -10,10 +10,12 @@ import net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket;
 import net.minecraft.network.protocol.game.ClientboundSetObjectivePacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
 import net.minecraft.network.protocol.game.ClientboundSetScorePacket;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stats;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.PlayerTeam;
@@ -24,6 +26,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
@@ -46,11 +49,35 @@ public class StatsHudMod {
         TerritoryManager.load();
     }
 
+    // Перехват ванильных и модовых взрывов
     @SubscribeEvent
     public static void onExplosionStart(ExplosionEvent.Start event) {
         if (!event.getLevel().isClientSide() && event.getLevel().getServer() != null) {
             BlockPos explosionPos = BlockPos.containing(event.getExplosion().center());
             TerritoryManager.handleExplosionOrSiege(event.getLevel().getServer(), explosionPos);
+        }
+    }
+
+    // Перехват попаданий осадных орудий Medieval Siege Machines и Create Big Cannons
+    @SubscribeEvent
+    public static void onProjectileImpact(ProjectileImpactEvent event) {
+        Projectile projectile = event.getProjectile();
+        if (projectile.level().isClientSide() || projectile.level().getServer() == null) return;
+
+        ResourceLocation id = projectile.getType().arch$registryName();
+        if (id == null) {
+            id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(projectile.getType());
+        }
+
+        if (id != null) {
+            String ns = id.getNamespace().toLowerCase();
+            String path = id.getPath().toLowerCase();
+
+            // Перехватываем снаряды Medieval Siege Machines, Create Big Cannons и катапульт
+            if (ns.contains("siegemachines") || ns.contains("createbigcannons") || path.contains("cannon") || path.contains("boulder") || path.contains("ballista") || path.contains("shot")) {
+                BlockPos impactPos = BlockPos.containing(event.getRayTraceResult().getLocation());
+                TerritoryManager.handleExplosionOrSiege(projectile.level().getServer(), impactPos);
+            }
         }
     }
 
@@ -156,9 +183,9 @@ public class StatsHudMod {
             ServerStatsCounter stats = server.getPlayerList().getPlayerStats(player);
             int mobKills = stats.getValue(Stats.CUSTOM.get(Stats.MOB_KILLS));
             int ping = player.connection.latency();
-            String territory = TerritoryManager.getTerritoryName(player.chunkPosition());
+            String location = TerritoryManager.getDisplayLocation(player);
 
-            sendPersonalLine(player, 6, "§7Локация: " + territory, "tm_6");
+            sendPersonalLine(player, 6, "§7Локация: " + location, "tm_6");
             sendPersonalLine(player, 5, "§7Игрок: §f" + player.getName().getString(), "tm_5");
             sendPersonalLine(player, 4, "§7В сети: §a" + onlineCount, "tm_4");
             sendPersonalLine(player, 3, "§7Пинг: §e" + ping + " ms", "line_ping");
