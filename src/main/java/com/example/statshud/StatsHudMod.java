@@ -28,7 +28,6 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -49,7 +48,6 @@ public class StatsHudMod {
         TerritoryManager.load();
     }
 
-    // Перехват ванильных и модовых взрывов
     @SubscribeEvent
     public static void onExplosionStart(ExplosionEvent.Start event) {
         if (!event.getLevel().isClientSide() && event.getLevel().getServer() != null) {
@@ -58,7 +56,6 @@ public class StatsHudMod {
         }
     }
 
-    // Перехват попаданий осадных орудий Medieval Siege Machines и Create Big Cannons
     @SubscribeEvent
     public static void onProjectileImpact(ProjectileImpactEvent event) {
         Projectile projectile = event.getProjectile();
@@ -73,8 +70,7 @@ public class StatsHudMod {
             String ns = id.getNamespace().toLowerCase();
             String path = id.getPath().toLowerCase();
 
-            // Перехватываем снаряды Medieval Siege Machines, Create Big Cannons и катапульт
-            if (ns.contains("siegemachines") || ns.contains("createbigcannons") || path.contains("cannon") || path.contains("boulder") || path.contains("ballista") || path.contains("shot")) {
+            if (ns.contains("siegemachines") || ns.contains("createbigcannons") || ns.contains("valarian") || path.contains("cannon") || path.contains("boulder") || path.contains("ballista") || path.contains("shot")) {
                 BlockPos impactPos = BlockPos.containing(event.getRayTraceResult().getLocation());
                 TerritoryManager.handleExplosionOrSiege(projectile.level().getServer(), impactPos);
             }
@@ -83,6 +79,19 @@ public class StatsHudMod {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
+        // Команда доступна строго администраторам и операторам с /op (permission level 2)
+        event.getDispatcher().register(
+            Commands.literal("raid")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("test")
+                    .executes(ctx -> {
+                        ServerPlayer player = ctx.getSource().getPlayerOrException();
+                        ValarianRaidManager.forceRaid(player);
+                        return 1;
+                    })
+                )
+        );
+
         event.getDispatcher().register(
             Commands.literal("claim")
                 .then(Commands.argument("radius", IntegerArgumentType.integer(0, 5))
@@ -134,16 +143,6 @@ public class StatsHudMod {
                     return count;
                 })
         );
-    }
-
-    @SubscribeEvent
-    public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (event.getPlayer() instanceof ServerPlayer player) {
-            if (TerritoryManager.isProtected(player, player.chunkPosition())) {
-                player.sendSystemMessage(Component.literal("§c✖ Вы не можете разрушать чужие владения!"));
-                event.setCanceled(true);
-            }
-        }
     }
 
     @SubscribeEvent
