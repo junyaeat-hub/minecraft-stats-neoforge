@@ -40,8 +40,6 @@ public class TerritoryManager {
 
     private static Map<String, ClaimData> CLAIMS = new HashMap<>();
     private static final Map<UUID, String> CURRENT_ZONE = new HashMap<>();
-
-    // Кулдаун тревоги осады, чтобы звук не спамил при серии взрывов (UUID владельца -> Время в мс)
     private static final Map<UUID, Long> SIEGE_COOLDOWNS = new HashMap<>();
 
     private static final List<SoundEvent> DISCOVERY_SOUNDS = List.of(
@@ -166,12 +164,10 @@ public class TerritoryManager {
         }
     }
 
-    // Модуль обнаружения осад и артиллерийского обстрела
     public static void handleExplosionOrSiege(MinecraftServer server, BlockPos pos) {
         ChunkPos center = new ChunkPos(pos);
         long now = System.currentTimeMillis();
 
-        // Проверяем эпицентр и соседние чанки (радиус 1 чанк вокруг взрыва)
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 String key = getChunkKey(center.x + dx, center.z + dz);
@@ -182,18 +178,15 @@ public class TerritoryManager {
                         UUID ownerUuid = UUID.fromString(data.ownerUuid);
                         long lastAlert = SIEGE_COOLDOWNS.getOrDefault(ownerUuid, 0L);
 
-                        // Кулдаун 8 секунд между тревогами одному владельцу
                         if (now - lastAlert > 8000) {
                             SIEGE_COOLDOWNS.put(ownerUuid, now);
                             ServerPlayer owner = server.getPlayerList().getPlayer(ownerUuid);
 
                             if (owner != null) {
-                                // Красное тревожное сообщение в Actionbar
                                 owner.connection.send(new ClientboundSetActionBarTextPacket(
                                     Component.literal("§c⚔ ТРЕВОГА! Владения [§6" + data.name + "§c] атакованы артиллерией!")
                                 ));
 
-                                // Звук набатного колокола
                                 owner.connection.send(new ClientboundSoundPacket(
                                     Holder.direct(SoundEvents.BELL_BLOCK),
                                     SoundSource.PLAYERS,
