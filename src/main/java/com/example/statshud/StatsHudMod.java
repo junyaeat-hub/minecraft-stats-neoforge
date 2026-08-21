@@ -1,5 +1,6 @@
 package com.example.statshud;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
@@ -45,32 +46,57 @@ public class StatsHudMod {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
+        // Команда: /claim <название> (1 чанк) ИЛИ /claim <радиус> <название> (радиус в чанках)
         event.getDispatcher().register(
             Commands.literal("claim")
+                .then(Commands.argument("radius", IntegerArgumentType.integer(0, 5))
+                    .then(Commands.argument("name", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            ServerPlayer player = ctx.getSource().getPlayerOrException();
+                            int radius = IntegerArgumentType.getInteger(ctx, "radius");
+                            String name = StringArgumentType.getString(ctx, "name");
+                            int count = TerritoryManager.claimArea(player, name, radius);
+                            player.sendSystemMessage(Component.literal("§a✔ Захвачено чанков: §e" + count + " §aпод именем §6" + name));
+                            return count;
+                        })
+                    )
+                )
                 .then(Commands.argument("name", StringArgumentType.greedyString())
                     .executes(ctx -> {
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
                         String name = StringArgumentType.getString(ctx, "name");
-                        if (TerritoryManager.claimChunk(player, name)) {
-                            player.sendSystemMessage(Component.literal("§a✔ Вы успешно заявили права на эти земли: §6" + name));
+                        int count = TerritoryManager.claimArea(player, name, 0);
+                        if (count > 0) {
+                            player.sendSystemMessage(Component.literal("§a✔ Чанк добавлен во владения: §6" + name));
                         } else {
-                            player.sendSystemMessage(Component.literal("§c✖ Этот чанк уже кем-то занят!"));
+                            player.sendSystemMessage(Component.literal("§c✖ Этот чанк занят чужим феодом!"));
                         }
-                        return 1;
+                        return count;
                     })
                 )
         );
 
+        // Команда: /unclaim ИЛИ /unclaim <радиус>
         event.getDispatcher().register(
             Commands.literal("unclaim")
+                .then(Commands.argument("radius", IntegerArgumentType.integer(0, 5))
+                    .executes(ctx -> {
+                        ServerPlayer player = ctx.getSource().getPlayerOrException();
+                        int radius = IntegerArgumentType.getInteger(ctx, "radius");
+                        int count = TerritoryManager.unclaimArea(player, radius);
+                        player.sendSystemMessage(Component.literal("§e✔ Освобождено чанков: §f" + count));
+                        return count;
+                    })
+                )
                 .executes(ctx -> {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
-                    if (TerritoryManager.unclaimChunk(player)) {
-                        player.sendSystemMessage(Component.literal("§e✔ Вы освободили эту территорию."));
+                    int count = TerritoryManager.unclaimArea(player, 0);
+                    if (count > 0) {
+                        player.sendSystemMessage(Component.literal("§e✔ Земли в этом чанке освобождены."));
                     } else {
                         player.sendSystemMessage(Component.literal("§c✖ Вы не владеете этим чанком!"));
                     }
-                    return 1;
+                    return count;
                 })
         );
     }
