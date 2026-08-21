@@ -46,7 +46,6 @@ public class StatsHudMod {
         TerritoryManager.load();
     }
 
-    // Перехват взрывов снарядов Create Big Cannons, ТНТ и осадных орудий
     @SubscribeEvent
     public static void onExplosionStart(ExplosionEvent.Start event) {
         if (!event.getLevel().isClientSide() && event.getLevel().getServer() != null) {
@@ -144,6 +143,9 @@ public class StatsHudMod {
 
         MinecraftServer server = event.getServer();
         if (server == null) return;
+
+        // Обработка тика случайных набегов Valarian
+        ValarianRaidManager.tick(server);
 
         int onlineCount = server.getPlayerCount();
         long totalDays = server.overworld().getDayTime() / 24000L;
