@@ -131,18 +131,37 @@ public class TerritoryManager {
         return !data.ownerUuid.equals(player.getUUID().toString()) && !player.hasPermissions(2);
     }
 
-    public static String getTerritoryName(ChunkPos pos) {
+    // Возвращает отображаемое имя локации для сайдбара: клейм > данж > дикие земли
+    public static String getDisplayLocation(ServerPlayer player) {
+        ClaimData data = CLAIMS.get(getChunkKey(player.chunkPosition().x, player.chunkPosition().z));
+        if (data != null) {
+            return "§6" + data.name;
+        }
+
+        String dungeon = DungeonTracker.getDungeonAt(player);
+        if (!dungeon.isEmpty()) {
+            return dungeon;
+        }
+
+        return "§7Дикие Земли";
+    }
+
+    public static String getRawTerritoryName(ChunkPos pos) {
         ClaimData data = CLAIMS.get(getChunkKey(pos.x, pos.z));
-        return data != null ? "§6" + data.name : "§7Дикие Земли";
+        return data != null ? data.name : "";
     }
 
     public static void checkPlayerMovement(ServerPlayer player) {
-        String currentName = getTerritoryName(player.chunkPosition());
+        ClaimData data = CLAIMS.get(getChunkKey(player.chunkPosition().x, player.chunkPosition().z));
+        String currentClaim = data != null ? data.name : "";
         String lastZone = CURRENT_ZONE.getOrDefault(player.getUUID(), "");
 
-        if (!currentName.equals(lastZone)) {
-            CURRENT_ZONE.put(player.getUUID(), currentName);
-            sendTerritoryTitle(player, currentName);
+        // Реагируем только на вход в именованные феодальные владения игроков
+        if (!currentClaim.isEmpty() && !currentClaim.equals(lastZone)) {
+            CURRENT_ZONE.put(player.getUUID(), currentClaim);
+            sendTerritoryTitle(player, "§6" + currentClaim);
+        } else if (currentClaim.isEmpty() && !lastZone.isEmpty()) {
+            CURRENT_ZONE.put(player.getUUID(), "");
         }
     }
 
@@ -151,17 +170,15 @@ public class TerritoryManager {
         player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(name)));
         player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal("§8[Вход на территорию]")));
 
-        if (!name.equals("§7Дикие Земли")) {
-            SoundEvent randomSound = DISCOVERY_SOUNDS.get(RANDOM.nextInt(DISCOVERY_SOUNDS.size()));
-            Holder<SoundEvent> soundHolder = Holder.direct(randomSound);
-            player.connection.send(new ClientboundSoundPacket(
-                soundHolder,
-                SoundSource.RECORDS,
-                player.getX(), player.getY(), player.getZ(),
-                1.0f, 1.0f,
-                player.level().getRandom().nextLong()
-            ));
-        }
+        SoundEvent randomSound = DISCOVERY_SOUNDS.get(RANDOM.nextInt(DISCOVERY_SOUNDS.size()));
+        Holder<SoundEvent> soundHolder = Holder.direct(randomSound);
+        player.connection.send(new ClientboundSoundPacket(
+            soundHolder,
+            SoundSource.RECORDS,
+            player.getX(), player.getY(), player.getZ(),
+            1.0f, 1.0f,
+            player.level().getRandom().nextLong()
+        ));
     }
 
     public static void handleExplosionOrSiege(MinecraftServer server, BlockPos pos) {
@@ -178,13 +195,13 @@ public class TerritoryManager {
                         UUID ownerUuid = UUID.fromString(data.ownerUuid);
                         long lastAlert = SIEGE_COOLDOWNS.getOrDefault(ownerUuid, 0L);
 
-                        if (now - lastAlert > 8000) {
+                        if (now - lastAlert > 6000) {
                             SIEGE_COOLDOWNS.put(ownerUuid, now);
                             ServerPlayer owner = server.getPlayerList().getPlayer(ownerUuid);
 
                             if (owner != null) {
                                 owner.connection.send(new ClientboundSetActionBarTextPacket(
-                                    Component.literal("§c⚔ ТРЕВОГА! Владения [§6" + data.name + "§c] атакованы артиллерией!")
+                                    Component.literal("§c⚔ ТРЕВОГА! Владения [§6" + data.name + "§c] под артиллерийским обстрелом!")
                                 ));
 
                                 owner.connection.send(new ClientboundSoundPacket(
