@@ -74,7 +74,6 @@ public class DungeonTracker {
         player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(dungeonName)));
         player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal("§4⚠ Зона повышенной опасности ⚠")));
 
-        // Исправлено: передаем SoundEvents.WARDEN_HEARTBEAT напрямую в Holder.direct
         Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.WARDEN_HEARTBEAT);
         player.connection.send(new ClientboundSoundPacket(
             soundHolder,
