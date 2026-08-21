@@ -3,7 +3,6 @@ package com.example.statshud;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
@@ -36,13 +35,13 @@ public class TerritoryManager {
         }
     }
 
-    // Хранилище территорий: "X,Z" -> ClaimData
+    // Хранилище: "X,Z" -> ClaimData
     private static Map<String, ClaimData> CLAIMS = new HashMap<>();
 
-    // Текущая зона игрока (UUID -> Название)
+    // Отслеживание текущей зоны (UUID -> Имя зоны)
     private static final Map<UUID, String> CURRENT_ZONE = new HashMap<>();
 
-    // Список посещённых зон игрока (UUID -> Set названий)
+    // Список открытых зон (UUID -> Set имён)
     private static final Map<UUID, Set<String>> VISITED_ZONES = new HashMap<>();
 
     public static void load() {
@@ -67,37 +66,65 @@ public class TerritoryManager {
         }
     }
 
-    public static String getChunkKey(ChunkPos pos) {
-        return pos.x + "," + pos.z;
+    public static String getChunkKey(int x, int z) {
+        return x + "," + z;
     }
 
-    public static boolean claimChunk(ServerPlayer player, String name) {
-        String key = getChunkKey(player.chunkPosition());
-        if (CLAIMS.containsKey(key)) return false;
+    public static int claimArea(ServerPlayer player, String name, int radius) {
+        ChunkPos center = player.chunkPosition();
+        String uuid = player.getUUID().toString();
+        int claimedCount = 0;
 
-        CLAIMS.put(key, new ClaimData(name, player.getUUID().toString()));
-        save();
-        return true;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                int cx = center.x + dx;
+                int cz = center.z + dz;
+                String key = getChunkKey(cx, cz);
+
+                ClaimData existing = CLAIMS.get(key);
+                // Можно занять свободный чанк или переименовать свой
+                if (existing == null || existing.ownerUuid.equals(uuid)) {
+                    CLAIMS.put(key, new ClaimData(name, uuid));
+                    claimedCount++;
+                }
+            }
+        }
+
+        if (claimedCount > 0) save();
+        return claimedCount;
     }
 
-    public static boolean unclaimChunk(ServerPlayer player) {
-        String key = getChunkKey(player.chunkPosition());
-        ClaimData data = CLAIMS.get(key);
-        if (data == null || !data.ownerUuid.equals(player.getUUID().toString())) return false;
+    public static int unclaimArea(ServerPlayer player, int radius) {
+        ChunkPos center = player.chunkPosition();
+        String uuid = player.getUUID().toString();
+        int unclaimedCount = 0;
 
-        CLAIMS.remove(key);
-        save();
-        return true;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                int cx = center.x + dx;
+                int cz = center.z + dz;
+                String key = getChunkKey(cx, cz);
+
+                ClaimData existing = CLAIMS.get(key);
+                if (existing != null && (existing.ownerUuid.equals(uuid) || player.hasPermissions(2))) {
+                    CLAIMS.remove(key);
+                    unclaimedCount++;
+                }
+            }
+        }
+
+        if (unclaimedCount > 0) save();
+        return unclaimedCount;
     }
 
     public static boolean isProtected(ServerPlayer player, ChunkPos pos) {
-        ClaimData data = CLAIMS.get(getChunkKey(pos));
+        ClaimData data = CLAIMS.get(getChunkKey(pos.x, pos.z));
         if (data == null) return false;
         return !data.ownerUuid.equals(player.getUUID().toString()) && !player.hasPermissions(2);
     }
 
     public static String getTerritoryName(ChunkPos pos) {
-        ClaimData data = CLAIMS.get(getChunkKey(pos));
+        ClaimData data = CLAIMS.get(getChunkKey(pos.x, pos.z));
         return data != null ? "§6" + data.name : "§7Дикие Земли";
     }
 
@@ -105,21 +132,25 @@ public class TerritoryManager {
         String currentName = getTerritoryName(player.chunkPosition());
         String lastZone = CURRENT_ZONE.getOrDefault(player.getUUID(), "");
 
+        // Срабатывает только при смене названия территории
         if (!currentName.equals(lastZone)) {
             CURRENT_ZONE.put(player.getUUID(), currentName);
 
-            Set<String> visited = VISITED_ZONES.computeIfAbsent(player.getUUID(), k -> new HashSet<>());
-            boolean isFirstVisit = visited.add(currentName);
-
-            sendTerritoryTitle(player, currentName, isFirstVisit);
+            if (!currentName.equals("§7Дикие Земли")) {
+                Set<String> visited = VISITED_ZONES.computeIfAbsent(player.getUUID(), k -> new HashSet<>());
+                boolean isFirstVisit = visited.add(currentName);
+                sendTerritoryTitle(player, currentName, isFirstVisit);
+            } else {
+                sendTerritoryTitle(player, currentName, false);
+            }
         }
     }
 
     private static void sendTerritoryTitle(ServerPlayer player, String name, boolean playSound) {
-        player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 30, 10));
+        player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 35, 10));
         player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(name)));
         player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(
-            playSound ? "§e✦ Новая территория ✦" : "§8[Вход в локацию]"
+            playSound ? "§e✦ Новые владения открыты ✦" : "§8[Вход на территорию]"
         )));
 
         if (playSound) {
