@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket;
 import net.minecraft.network.protocol.game.ClientboundSetObjectivePacket;
@@ -61,10 +62,8 @@ public class StatsHudMod {
         Projectile projectile = event.getProjectile();
         if (projectile.level().isClientSide() || projectile.level().getServer() == null) return;
 
-        ResourceLocation id = projectile.getType().arch$registryName();
-        if (id == null) {
-            id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(projectile.getType());
-        }
+        // Чистое получение ResourceLocation через реестр NeoForge 1.21.1
+        ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(projectile.getType());
 
         if (id != null) {
             String ns = id.getNamespace().toLowerCase();
@@ -79,7 +78,6 @@ public class StatsHudMod {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        // Команда доступна строго администраторам и операторам с /op (permission level 2)
         event.getDispatcher().register(
             Commands.literal("raid")
                 .requires(source -> source.hasPermission(2))
