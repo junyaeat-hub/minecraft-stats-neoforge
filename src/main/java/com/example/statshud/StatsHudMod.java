@@ -72,9 +72,9 @@ public class StatsHudMod {
             scoreboard.addPlayerToTeam(entry, team);
         }
         team.setPlayerPrefix(Component.literal(text));
-        
-        // Гарантированно рабочий ScoreHolder для 1.21.1:
-        ScoreHolder holder = ScoreHolder.fromName(entry);
+
+        // ScoreHolder через функциональный интерфейс (совместим со всеми версиями 1.20.4 - 1.21.x):
+        ScoreHolder holder = () -> entry;
         scoreboard.getOrCreatePlayerScore(holder, objective).set(score);
     }
 }
