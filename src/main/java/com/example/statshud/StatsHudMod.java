@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket;
 import net.minecraft.network.protocol.game.ClientboundSetObjectivePacket;
@@ -25,6 +26,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -42,6 +44,15 @@ public class StatsHudMod {
     @SubscribeEvent
     public static void onServerStarting(ServerStartingEvent event) {
         TerritoryManager.load();
+    }
+
+    // Перехват взрывов снарядов Create Big Cannons, ТНТ и осадных орудий
+    @SubscribeEvent
+    public static void onExplosionStart(ExplosionEvent.Start event) {
+        if (!event.getLevel().isClientSide() && event.getLevel().getServer() != null) {
+            BlockPos explosionPos = BlockPos.containing(event.getExplosion().center());
+            TerritoryManager.handleExplosionOrSiege(event.getLevel().getServer(), explosionPos);
+        }
     }
 
     @SubscribeEvent
