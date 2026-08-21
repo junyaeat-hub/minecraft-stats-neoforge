@@ -36,14 +36,13 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 @Mod(StatsHudMod.MODID)
 @EventBusSubscriber(modid = StatsHudMod.MODID)
 public class StatsHudMod {
     public static final String MODID = "statshud";
     private static int tickCounter = 0;
-    private static final Set<UUID> INITIALIZED_PLAYERS = new HashSet<>();
+    private static final Set<String> INITIALIZED_PLAYERS = new HashSet<>();
 
     public StatsHudMod() {}
 
@@ -146,7 +145,7 @@ public class StatsHudMod {
     }
 
     private static String getPlayerObjectiveName(ServerPlayer player) {
-        return "sb_" + player.getStringUUID().replace("-", "").substring(0, 8);
+        return "sb_" + Math.abs(player.getGameProfile().getName().hashCode() % 100000);
     }
 
     private static void setupPlayerScoreboard(ServerPlayer player) {
@@ -168,13 +167,13 @@ public class StatsHudMod {
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            INITIALIZED_PLAYERS.remove(player.getUUID());
+            INITIALIZED_PLAYERS.remove(player.getGameProfile().getName());
         }
     }
 
     @SubscribeEvent
     public static void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
-        INITIALIZED_PLAYERS.remove(event.getEntity().getUUID());
+        INITIALIZED_PLAYERS.remove(event.getEntity().getGameProfile().getName());
     }
 
     @SubscribeEvent
@@ -190,9 +189,11 @@ public class StatsHudMod {
         long totalDays = server.overworld().getDayTime() / 24000L;
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (!INITIALIZED_PLAYERS.contains(player.getUUID())) {
+            String pName = player.getGameProfile().getName();
+
+            if (!INITIALIZED_PLAYERS.contains(pName)) {
                 setupPlayerScoreboard(player);
-                INITIALIZED_PLAYERS.add(player.getUUID());
+                INITIALIZED_PLAYERS.add(pName);
             }
 
             TerritoryManager.checkPlayerMovement(player);
@@ -203,19 +204,20 @@ public class StatsHudMod {
             int ping = player.connection.latency();
             String location = TerritoryManager.getDisplayLocation(player);
 
-            String pKey = player.getStringUUID().replace("-", "").substring(0, 8);
             String objName = getPlayerObjectiveName(player);
+            String safePrefix = "t" + Math.abs(pName.hashCode() % 1000) + "_";
 
-            sendPersonalLine(player, objName, 6, "§7Локация: " + location, "loc_" + pKey);
-            sendPersonalLine(player, objName, 5, "§7Игрок: §f" + player.getName().getString(), "nam_" + pKey);
-            sendPersonalLine(player, objName, 4, "§7В сети: §a" + onlineCount, "onl_" + pKey);
-            sendPersonalLine(player, objName, 3, "§7Пинг: §e" + ping + " ms", "png_" + pKey);
-            sendPersonalLine(player, objName, 2, "§7Убийств: §c" + mobKills, "kll_" + pKey);
-            sendPersonalLine(player, objName, 1, "§7Игровой день: §b" + totalDays, "day_" + pKey);
+            sendPersonalLine(player, objName, 6, "§7Локация: " + location, safePrefix + "6");
+            sendPersonalLine(player, objName, 5, "§7Игрок: §f" + pName, safePrefix + "5");
+            sendPersonalLine(player, objName, 4, "§7В сети: §a" + onlineCount, safePrefix + "4");
+            sendPersonalLine(player, objName, 3, "§7Пинг: §e" + ping + " ms", safePrefix + "3");
+            sendPersonalLine(player, objName, 2, "§7Убийств: §c" + mobKills, safePrefix + "2");
+            sendPersonalLine(player, objName, 1, "§7Игровой день: §b" + totalDays, safePrefix + "1");
         }
     }
 
     private static void sendPersonalLine(ServerPlayer player, String objectiveName, int score, String text, String teamName) {
+        // Уникальный цветной маркер для каждой позиции в строках
         String entry = ChatFormatting.values()[score].toString() + ChatFormatting.RESET;
 
         PlayerTeam team = new PlayerTeam(new Scoreboard(), teamName);
