@@ -24,17 +24,41 @@ import java.util.Random;
 
 public class ValarianRaidManager {
     private static final Random RANDOM = new Random();
-    private static int raidTimer = 0;
-    
-    private static final int RAID_INTERVAL_TICKS = 20 * 60 * 20;
+
+    // Запоминаем игровой день последнего набега
+    private static long lastRaidDay = -1;
+    // Интервал до следующего рейда (от 10 до 15 игровых дней)
+    private static int nextRaidInterval = 10 + RANDOM.nextInt(6); 
 
     public static void tick(MinecraftServer server) {
-        if (++raidTimer < RAID_INTERVAL_TICKS) return;
-        raidTimer = 0;
+        ServerLevel overworld = server.overworld();
+        if (overworld == null) return;
 
+        long currentDay = overworld.getDayTime() / 24000L;
+        long timeOfDay = overworld.getDayTime() % 24000L;
+
+        // Инициализируем при первом запуске сервера
+        if (lastRaidDay == -1) {
+            lastRaidDay = currentDay;
+            return;
+        }
+
+        // Проверяем: прошло ли нужное количество игровых дней (10-15)
+        // И запускаем набег на закате / в начале ночи (время 13000 тиков)
+        if (currentDay - lastRaidDay >= nextRaidInterval && timeOfDay >= 13000L && timeOfDay <= 13050L) {
+            lastRaidDay = currentDay;
+            nextRaidInterval = 10 + RANDOM.nextInt(6); // Новый интервал: 10-15 дней
+
+            triggerRaidEvent(server);
+        }
+    }
+
+    private static void triggerRaidEvent(MinecraftServer server) {
         List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
         if (onlinePlayers.isEmpty()) return;
 
+        // Ищем игроков, которые находятся внутри заприваченных владений (не в Диких Землях)
+        // и не состоят в гражданстве Valarian
         List<ServerPlayer> validTargets = new ArrayList<>();
         for (ServerPlayer player : onlinePlayers) {
             String territory = TerritoryManager.getTerritoryName(player.chunkPosition());
@@ -87,7 +111,7 @@ public class ValarianRaidManager {
             Component.literal("§c⚔ НАБЕГ! Войска " + factionName + " штурмуют [" + territoryName + "§c]! ⚔")
         ));
 
-        player.sendSystemMessage(Component.literal("§4[Осада] §cОтряд " + factionName + " замечен у границ ваших владений! Приготовьтесь к бою!"));
+        player.sendSystemMessage(Component.literal("§4[Осада] §cОтряд " + factionName + " под покровом ночи подошел к границам ваших земель! Приготовьтесь к бою!"));
 
         Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.RAID_HORN.value());
         player.connection.send(new ClientboundSoundPacket(
