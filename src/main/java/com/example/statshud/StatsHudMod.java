@@ -144,7 +144,6 @@ public class StatsHudMod {
         MinecraftServer server = event.getServer();
         if (server == null) return;
 
-        // Обработка тика случайных набегов Valarian
         ValarianRaidManager.tick(server);
 
         int onlineCount = server.getPlayerCount();
