@@ -10,6 +10,7 @@ import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
+import net.minecraft.world.scores.ScoreHolder;
 import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -27,7 +28,6 @@ public class StatsHudMod {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        // Обновляем статистику каждую секунду (раз в 20 тиков)
         if (++tickCounter % 20 != 0) return;
 
         MinecraftServer server = event.getServer();
@@ -72,6 +72,8 @@ public class StatsHudMod {
             scoreboard.addPlayerToTeam(entry, team);
         }
         team.setPlayerPrefix(Component.literal(text));
-        scoreboard.getOrCreatePlayerScore(entry, objective).set(score);
+        
+        // Исправленная строка для версии 1.21.1:
+        scoreboard.getOrCreatePlayerScore(ScoreHolder.forName(entry), objective).set(score);
     }
 }
