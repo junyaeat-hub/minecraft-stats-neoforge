@@ -25,10 +25,9 @@ import java.util.Random;
 public class ValarianRaidManager {
     private static final Random RANDOM = new Random();
 
-    // Запоминаем игровой день последнего набега
-    private static long lastRaidDay = -1;
-    // Интервал до следующего рейда (от 10 до 15 игровых дней)
-    private static int nextRaidInterval = 10 + RANDOM.nextInt(6); 
+    private static long lastRaidDay = 0;
+    private static int nextRaidInterval = 10; 
+    private static boolean raidTriggeredToday = false;
 
     public static void tick(MinecraftServer server) {
         ServerLevel overworld = server.overworld();
@@ -37,14 +36,12 @@ public class ValarianRaidManager {
         long currentDay = overworld.getDayTime() / 24000L;
         long timeOfDay = overworld.getDayTime() % 24000L;
 
-        // Инициализируем при первом запуске сервера
-        if (lastRaidDay == -1) {
-            lastRaidDay = currentDay;
-            return;
+        if (timeOfDay < 1000L) {
+            raidTriggeredToday = false;
         }
 
-        // Проверяем интервал 10-15 дней и время заката (13000 тиков)
-        if (currentDay - lastRaidDay >= nextRaidInterval && timeOfDay >= 13000L && timeOfDay <= 13050L) {
+        if (!raidTriggeredToday && (currentDay - lastRaidDay >= nextRaidInterval) && timeOfDay >= 13000L) {
+            raidTriggeredToday = true;
             lastRaidDay = currentDay;
             nextRaidInterval = 10 + RANDOM.nextInt(6);
 
@@ -56,11 +53,10 @@ public class ValarianRaidManager {
         List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
         if (onlinePlayers.isEmpty()) return;
 
-        // Ищем игроков внутри заприваченных клеймов, не имеющих гражданства Valarian
         List<ServerPlayer> validTargets = new ArrayList<>();
         for (ServerPlayer player : onlinePlayers) {
-            String territory = TerritoryManager.getTerritoryName(player.chunkPosition());
-            boolean isInClaim = !territory.equals("§7Дикие Земли");
+            String rawTerritory = TerritoryManager.getRawTerritoryName(player.chunkPosition());
+            boolean isInClaim = !rawTerritory.isEmpty();
 
             if (isInClaim && !isCitizenOfFaction(player, "valarian")) {
                 validTargets.add(player);
@@ -70,8 +66,16 @@ public class ValarianRaidManager {
         if (validTargets.isEmpty()) return;
 
         ServerPlayer target = validTargets.get(RANDOM.nextInt(validTargets.size()));
-        String claimName = TerritoryManager.getTerritoryName(target.chunkPosition());
+        String claimName = TerritoryManager.getRawTerritoryName(target.chunkPosition());
         spawnRaid(target, claimName, "Valarian");
+    }
+
+    public static boolean forceRaid(ServerPlayer player) {
+        String claimName = TerritoryManager.getRawTerritoryName(player.chunkPosition());
+        if (claimName.isEmpty()) {
+            claimName = "Тестовая Зона";
+        }
+        return spawnRaid(player, claimName, "Valarian");
     }
 
     public static boolean isCitizenOfFaction(ServerPlayer player, String factionName) {
@@ -101,15 +105,38 @@ public class ValarianRaidManager {
         return false;
     }
 
-    public static void spawnRaid(ServerPlayer player, String territoryName, String factionName) {
+    public static boolean spawnRaid(ServerPlayer player, String territoryName, String factionName) {
         ServerLevel level = (ServerLevel) player.level();
         BlockPos playerPos = player.blockPosition();
+
+        // Фильтруем строго живых бойцов (исключаем снаряды, повозки, мосты)
+        List<EntityType<?>> valarianEntities = BuiltInRegistries.ENTITY_TYPE.entrySet().stream()
+            .filter(entry -> {
+                String ns = entry.getKey().location().getNamespace().toLowerCase();
+                String path = entry.getKey().location().getPath().toLowerCase();
+                boolean isValarian = ns.contains("valarian") || path.contains("valarian");
+                boolean isNotBlacklisted = !path.contains("projectile") && !path.contains("ballista") && !path.contains("cannon") && !path.contains("catapult") && !path.contains("carriage") && !path.contains("drawbridge") && !path.contains("ram");
+                return isValarian && isNotBlacklisted;
+            })
+            .map(java.util.Map.Entry::getValue)
+            .toList();
+
+        // Запасной fallback на лучника или первого моба, если фильтр отсёк всё
+        if (valarianEntities.isEmpty()) {
+            BuiltInRegistries.ENTITY_TYPE.getOptional(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("valarian_conquest", "archer"))
+                .ifPresent(valarianEntities::add);
+        }
+
+        if (valarianEntities.isEmpty()) {
+            player.sendSystemMessage(Component.literal("§c[Ошибка] Живые бойцы Valarian не найдены!"));
+            return false;
+        }
 
         player.connection.send(new ClientboundSetActionBarTextPacket(
             Component.literal("§c⚔ НАБЕГ! Войска " + factionName + " штурмуют [" + territoryName + "§c]! ⚔")
         ));
 
-        player.sendSystemMessage(Component.literal("§4[Осада] §cОтряд " + factionName + " под покровом ночи подошел к границам ваших земель! Приготовьтесь к бою!"));
+        player.sendSystemMessage(Component.literal("§4[Осада] §cОтряд " + factionName + " подошел к границам ваших владений! Приготовьтесь к бою!"));
 
         Holder<SoundEvent> soundHolder = Holder.direct(SoundEvents.RAID_HORN.value());
         player.connection.send(new ClientboundSoundPacket(
@@ -120,17 +147,12 @@ public class ValarianRaidManager {
             level.getRandom().nextLong()
         ));
 
-        List<EntityType<?>> valarianEntities = BuiltInRegistries.ENTITY_TYPE.entrySet().stream()
-            .filter(entry -> entry.getKey().location().getNamespace().equals("valarian_conquest"))
-            .map(java.util.Map.Entry::getValue)
-            .toList();
-
-        if (valarianEntities.isEmpty()) return;
-
         int squadSize = 6 + RANDOM.nextInt(5);
+        int count = 0;
+
         for (int i = 0; i < squadSize; i++) {
             double angle = RANDOM.nextDouble() * 2 * Math.PI;
-            double distance = 24 + RANDOM.nextDouble() * 12;
+            double distance = 18 + RANDOM.nextDouble() * 10;
 
             int spawnX = playerPos.getX() + (int) (Math.cos(angle) * distance);
             int spawnZ = playerPos.getZ() + (int) (Math.sin(angle) * distance);
@@ -139,14 +161,16 @@ public class ValarianRaidManager {
             BlockPos spawnPos = new BlockPos(spawnX, spawnY, spawnY <= level.getMinBuildHeight() ? playerPos.getY() : spawnY);
 
             EntityType<?> chosenType = valarianEntities.get(RANDOM.nextInt(valarianEntities.size()));
-            
-            // Исправлено: чистый вызов .create(level) для 1.21.1
             Entity createdEntity = chosenType.create(level);
             if (createdEntity instanceof Mob mob) {
                 mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
                 mob.setTarget(player);
                 level.addFreshEntity(mob);
+                count++;
             }
         }
+
+        player.sendSystemMessage(Component.literal("§a[Набег] Прибыло бойцов: §e" + count));
+        return true;
     }
 }
