@@ -37,7 +37,6 @@ public class TerritoryManager {
 
     private static Map<String, ClaimData> CLAIMS = new HashMap<>();
     private static final Map<UUID, String> CURRENT_ZONE = new HashMap<>();
-    private static final Map<UUID, Set<String>> VISITED_ZONES = new HashMap<>();
 
     private static final List<SoundEvent> DISCOVERY_SOUNDS = List.of(
         SoundEvents.RAID_HORN.value(),
@@ -137,27 +136,20 @@ public class TerritoryManager {
         String currentName = getTerritoryName(player.chunkPosition());
         String lastZone = CURRENT_ZONE.getOrDefault(player.getUUID(), "");
 
+        // Срабатывает каждый раз при смене территории
         if (!currentName.equals(lastZone)) {
             CURRENT_ZONE.put(player.getUUID(), currentName);
-
-            if (!currentName.equals("§7Дикие Земли")) {
-                Set<String> visited = VISITED_ZONES.computeIfAbsent(player.getUUID(), k -> new HashSet<>());
-                boolean isFirstVisit = visited.add(currentName);
-                sendTerritoryTitle(player, currentName, isFirstVisit);
-            } else {
-                sendTerritoryTitle(player, currentName, false);
-            }
+            sendTerritoryTitle(player, currentName);
         }
     }
 
-    private static void sendTerritoryTitle(ServerPlayer player, String name, boolean playSound) {
+    private static void sendTerritoryTitle(ServerPlayer player, String name) {
         player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 35, 10));
         player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(name)));
-        player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(
-            playSound ? "§e✦ Новые владения открыты ✦" : "§8[Вход на территорию]"
-        )));
+        player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal("§8[Вход на территорию]")));
 
-        if (playSound) {
+        // Звук проигрывается всегда при переходе в любую локацию кроме "Диких Земель"
+        if (!name.equals("§7Дикие Земли")) {
             SoundEvent randomSound = DISCOVERY_SOUNDS.get(RANDOM.nextInt(DISCOVERY_SOUNDS.size()));
             Holder<SoundEvent> soundHolder = Holder.direct(randomSound);
             player.connection.send(new ClientboundSoundPacket(
