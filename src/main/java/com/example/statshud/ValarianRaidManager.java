@@ -13,9 +13,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.ArrayList;
@@ -43,11 +43,10 @@ public class ValarianRaidManager {
             return;
         }
 
-        // Проверяем: прошло ли нужное количество игровых дней (10-15)
-        // И запускаем набег на закате / в начале ночи (время 13000 тиков)
+        // Проверяем интервал 10-15 дней и время заката (13000 тиков)
         if (currentDay - lastRaidDay >= nextRaidInterval && timeOfDay >= 13000L && timeOfDay <= 13050L) {
             lastRaidDay = currentDay;
-            nextRaidInterval = 10 + RANDOM.nextInt(6); // Новый интервал: 10-15 дней
+            nextRaidInterval = 10 + RANDOM.nextInt(6);
 
             triggerRaidEvent(server);
         }
@@ -57,8 +56,7 @@ public class ValarianRaidManager {
         List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
         if (onlinePlayers.isEmpty()) return;
 
-        // Ищем игроков, которые находятся внутри заприваченных владений (не в Диких Землях)
-        // и не состоят в гражданстве Valarian
+        // Ищем игроков внутри заприваченных клеймов, не имеющих гражданства Valarian
         List<ServerPlayer> validTargets = new ArrayList<>();
         for (ServerPlayer player : onlinePlayers) {
             String territory = TerritoryManager.getTerritoryName(player.chunkPosition());
@@ -141,8 +139,10 @@ public class ValarianRaidManager {
             BlockPos spawnPos = new BlockPos(spawnX, spawnY, spawnY <= level.getMinBuildHeight() ? playerPos.getY() : spawnY);
 
             EntityType<?> chosenType = valarianEntities.get(RANDOM.nextInt(valarianEntities.size()));
-            var entity = chosenType.create(level, MobSpawnType.EVENT);
-            if (entity instanceof Mob mob) {
+            
+            // Исправлено: чистый вызов .create(level) для 1.21.1
+            Entity createdEntity = chosenType.create(level);
+            if (createdEntity instanceof Mob mob) {
                 mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
                 mob.setTarget(player);
                 level.addFreshEntity(mob);
